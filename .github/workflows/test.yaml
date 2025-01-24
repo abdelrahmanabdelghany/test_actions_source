@@ -5,10 +5,10 @@ on:
 
 jobs:
   test:
-    name: trigger target repository
+    name: Trigger target repository
     runs-on: ubuntu-latest
     steps:
-      - name: trigger target repository
+      - name: Trigger target repository
         env:
           GITHUB_TOKEN: ${{ secrets.PAT }}
         run: |
@@ -18,22 +18,32 @@ jobs:
           https://api.github.com/repos/abdelrahmanabdelghany/test_actions_target/dispatches \
           -d '{"event_type":"trigger", "client_payload":{"triggered_by":"test_workflow", "message":"Triggered from source repo"}}'
 
-      - name: Wait and check workflow run status
+      - name: Wait before checking workflow status
+        run: sleep 15
+
+      - name: Fetch workflow run ID
+        id: get_run_id
         env:
           GITHUB_TOKEN: ${{ secrets.PAT }}
         run: |
-          echo "Waiting for the target repository workflow to complete..."
-          sleep 10 # Wait before fetching the status
-
-          # Fetch the latest workflow run
           TARGET_RUN_ID=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
             https://api.github.com/repos/abdelrahmanabdelghany/test_actions_target/actions/runs \
-            | jq -r '.workflow_runs[0].id')
+            | jq -r '.workflow_runs[] | select(.name=="triggered_workflow") | .id' | head -n 1)
+
+          if [ -z "$TARGET_RUN_ID" ]; then
+            echo "No workflow run found for the target repository."
+            exit 1
+          fi
 
           echo "Target Workflow Run ID: $TARGET_RUN_ID"
+          echo "::set-output name=run_id::$TARGET_RUN_ID"
 
-          # Poll the workflow status
-          for i in {1..10}; do
+      - name: Poll workflow run status
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT }}
+        run: |
+          TARGET_RUN_ID=${{ steps.get_run_id.outputs.run_id }}
+          for i in {1..20}; do
             STATUS=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
               https://api.github.com/repos/abdelrahmanabdelghany/test_actions_target/actions/runs/$TARGET_RUN_ID \
               | jq -r '.status')
