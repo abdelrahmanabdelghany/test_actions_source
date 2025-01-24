@@ -1,0 +1,13 @@
+name: test_workflow
+
+on: push
+
+jobs:
+  test:
+    name: test target repo workflow
+    runs-on: ubuntu-latest
+    steps:
+      - name: test_target_repo_actions        
+        run: |
+          echo "trigering target repo actions"
+          
