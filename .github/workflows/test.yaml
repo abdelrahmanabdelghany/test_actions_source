@@ -1,13 +1,62 @@
 name: test_workflow
 
-on: push
+on:
+  workflow_dispatch:
 
 jobs:
   test:
-    name: test target repo workflow
+    name: trigger target repository
     runs-on: ubuntu-latest
     steps:
-      - name: test_target_repo_actions        
+      - name: trigger target repository
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT }}
         run: |
-          echo "trigering target repo actions"
-          
+          echo "Triggering workflow in target repository"
+          curl -X POST -H "Accept: application/vnd.github+json" \
+          -H "Authorization: Bearer $GITHUB_TOKEN" \
+          https://api.github.com/repos/abdelrahmanabdelghany/test_actions_target/dispatches \
+          -d '{"event_type":"trigger", "client_payload":{"triggered_by":"test_workflow", "message":"Triggered from source repo"}}'
+
+      - name: Wait and check workflow run status
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT }}
+        run: |
+          echo "Waiting for the target repository workflow to complete..."
+          sleep 10 # Wait before fetching the status
+
+          # Fetch the latest workflow run
+          TARGET_RUN_ID=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
+            https://api.github.com/repos/abdelrahmanabdelghany/test_actions_target/actions/runs \
+            | jq -r '.workflow_runs[0].id')
+
+          echo "Target Workflow Run ID: $TARGET_RUN_ID"
+
+          # Poll the workflow status
+          for i in {1..10}; do
+            STATUS=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
+              https://api.github.com/repos/abdelrahmanabdelghany/test_actions_target/actions/runs/$TARGET_RUN_ID \
+              | jq -r '.status')
+
+            CONCLUSION=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
+              https://api.github.com/repos/abdelrahmanabdelghany/test_actions_target/actions/runs/$TARGET_RUN_ID \
+              | jq -r '.conclusion')
+
+            echo "Workflow Status: $STATUS, Conclusion: $CONCLUSION"
+
+            if [ "$STATUS" = "completed" ]; then
+              if [ "$CONCLUSION" = "success" ]; then
+                echo "Target workflow completed successfully!"
+                exit 0
+              else
+                echo "Target workflow failed or was cancelled."
+                exit 1
+              fi
+            fi
+
+            echo "Workflow still running, checking again in 10 seconds..."
+            sleep 10
+          done
+
+          echo "Timeout reached while waiting for the target workflow."
+          exit 1
